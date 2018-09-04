@@ -1,53 +1,52 @@
 <?php
 
-namespace Enqueue\Tests\Client\Amqp;
+namespace Enqueue\Tests\Client\Driver;
 
-use Enqueue\Client\Amqp\AmqpDriver;
 use Enqueue\Client\Config;
+use Enqueue\Client\Driver\RedisDriver;
 use Enqueue\Client\DriverInterface;
 use Enqueue\Client\Message;
+use Enqueue\Client\MessagePriority;
 use Enqueue\Client\Meta\QueueMetaRegistry;
+use Enqueue\Redis\RedisContext;
+use Enqueue\Redis\RedisDestination;
+use Enqueue\Redis\RedisMessage;
 use Enqueue\Test\ClassExtensionTrait;
-use Interop\Amqp\AmqpContext;
-use Interop\Amqp\AmqpProducer;
-use Interop\Amqp\Impl\AmqpBind;
-use Interop\Amqp\Impl\AmqpMessage;
-use Interop\Amqp\Impl\AmqpQueue;
-use Interop\Amqp\Impl\AmqpTopic;
+use Interop\Queue\PsrProducer;
 use PHPUnit\Framework\TestCase;
 
-class AmqpDriverTest extends TestCase
+class RedisDriverTest extends TestCase
 {
     use ClassExtensionTrait;
 
     public function testShouldImplementsDriverInterface()
     {
-        $this->assertClassImplements(DriverInterface::class, AmqpDriver::class);
+        $this->assertClassImplements(DriverInterface::class, RedisDriver::class);
     }
 
     public function testCouldBeConstructedWithRequiredArguments()
     {
-        new AmqpDriver(
-            $this->createAmqpContextMock(),
-            $this->createDummyConfig(),
+        new RedisDriver(
+            $this->createPsrContextMock(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
     }
 
     public function testShouldReturnConfigObject()
     {
-        $config = $this->createDummyConfig();
+        $config = Config::create();
 
-        $driver = new AmqpDriver($this->createAmqpContextMock(), $config, $this->createDummyQueueMetaRegistry());
+        $driver = new RedisDriver($this->createPsrContextMock(), $config, $this->createDummyQueueMetaRegistry());
 
         $this->assertSame($config, $driver->getConfig());
     }
 
     public function testShouldCreateAndReturnQueueInstance()
     {
-        $expectedQueue = new AmqpQueue('aName');
+        $expectedQueue = new RedisDestination('aName');
 
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         $context
             ->expects($this->once())
             ->method('createQueue')
@@ -55,21 +54,18 @@ class AmqpDriverTest extends TestCase
             ->willReturn($expectedQueue)
         ;
 
-        $driver = new AmqpDriver($context, $this->createDummyConfig(), $this->createDummyQueueMetaRegistry());
+        $driver = new RedisDriver($context, $this->createDummyConfig(), $this->createDummyQueueMetaRegistry());
 
         $queue = $driver->createQueue('aFooQueue');
 
         $this->assertSame($expectedQueue, $queue);
-        $this->assertSame([], $queue->getArguments());
-        $this->assertSame(2, $queue->getFlags());
-        $this->assertNull($queue->getConsumerTag());
     }
 
     public function testShouldCreateAndReturnQueueInstanceWithHardcodedTransportName()
     {
-        $expectedQueue = new AmqpQueue('aName');
+        $expectedQueue = new RedisDestination('aName');
 
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         $context
             ->expects($this->once())
             ->method('createQueue')
@@ -77,7 +73,7 @@ class AmqpDriverTest extends TestCase
             ->willReturn($expectedQueue)
         ;
 
-        $driver = new AmqpDriver($context, $this->createDummyConfig(), $this->createDummyQueueMetaRegistry());
+        $driver = new RedisDriver($context, $this->createDummyConfig(), $this->createDummyQueueMetaRegistry());
 
         $queue = $driver->createQueue('aBarQueue');
 
@@ -86,20 +82,21 @@ class AmqpDriverTest extends TestCase
 
     public function testShouldConvertTransportMessageToClientMessage()
     {
-        $transportMessage = new AmqpMessage();
+        $transportMessage = new RedisMessage();
         $transportMessage->setBody('body');
         $transportMessage->setHeaders(['hkey' => 'hval']);
         $transportMessage->setProperties(['key' => 'val']);
         $transportMessage->setHeader('content_type', 'ContentType');
-        $transportMessage->setHeader('expiration', '12345000');
         $transportMessage->setMessageId('MessageId');
         $transportMessage->setTimestamp(1000);
         $transportMessage->setReplyTo('theReplyTo');
         $transportMessage->setCorrelationId('theCorrelationId');
+        $transportMessage->setReplyTo('theReplyTo');
+        $transportMessage->setCorrelationId('theCorrelationId');
 
-        $driver = new AmqpDriver(
-            $this->createAmqpContextMock(),
-            $this->createDummyConfig(),
+        $driver = new RedisDriver(
+            $this->createPsrContextMock(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -110,7 +107,6 @@ class AmqpDriverTest extends TestCase
         $this->assertSame([
             'hkey' => 'hval',
             'content_type' => 'ContentType',
-            'expiration' => '12345000',
             'message_id' => 'MessageId',
             'timestamp' => 1000,
             'reply_to' => 'theReplyTo',
@@ -120,11 +116,13 @@ class AmqpDriverTest extends TestCase
             'key' => 'val',
         ], $clientMessage->getProperties());
         $this->assertSame('MessageId', $clientMessage->getMessageId());
-        $this->assertSame(12345, $clientMessage->getExpire());
         $this->assertSame('ContentType', $clientMessage->getContentType());
         $this->assertSame(1000, $clientMessage->getTimestamp());
         $this->assertSame('theReplyTo', $clientMessage->getReplyTo());
         $this->assertSame('theCorrelationId', $clientMessage->getCorrelationId());
+
+        $this->assertNull($clientMessage->getExpire());
+        $this->assertSame(MessagePriority::NORMAL, $clientMessage->getPriority());
     }
 
     public function testShouldConvertClientMessageToTransportMessage()
@@ -135,37 +133,36 @@ class AmqpDriverTest extends TestCase
         $clientMessage->setProperties(['key' => 'val']);
         $clientMessage->setContentType('ContentType');
         $clientMessage->setExpire(123);
+        $clientMessage->setPriority(MessagePriority::VERY_HIGH);
         $clientMessage->setMessageId('MessageId');
         $clientMessage->setTimestamp(1000);
         $clientMessage->setReplyTo('theReplyTo');
         $clientMessage->setCorrelationId('theCorrelationId');
 
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         $context
             ->expects($this->once())
             ->method('createMessage')
-            ->willReturn(new AmqpMessage())
+            ->willReturn(new RedisMessage())
         ;
 
-        $driver = new AmqpDriver(
+        $driver = new RedisDriver(
             $context,
-            $this->createDummyConfig(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
         $transportMessage = $driver->createTransportMessage($clientMessage);
 
-        $this->assertInstanceOf(AmqpMessage::class, $transportMessage);
+        $this->assertInstanceOf(RedisMessage::class, $transportMessage);
         $this->assertSame('body', $transportMessage->getBody());
         $this->assertSame([
             'hkey' => 'hval',
+            'content_type' => 'ContentType',
             'message_id' => 'MessageId',
             'timestamp' => 1000,
             'reply_to' => 'theReplyTo',
             'correlation_id' => 'theCorrelationId',
-            'content_type' => 'ContentType',
-            'delivery_mode' => 2,
-            'expiration' => '123000',
         ], $transportMessage->getHeaders());
         $this->assertSame([
             'key' => 'val',
@@ -176,21 +173,23 @@ class AmqpDriverTest extends TestCase
         $this->assertSame('theCorrelationId', $transportMessage->getCorrelationId());
     }
 
-    public function testShouldSendMessageToRouter()
+    public function testShouldSendMessageToRouterQueue()
     {
-        $topic = new AmqpTopic('');
-        $transportMessage = new AmqpMessage();
+        $topic = new RedisDestination('aDestinationName');
+        $transportMessage = new RedisMessage();
+        $config = $this->createDummyConfig();
 
-        $producer = $this->createAmqpProducerMock();
+        $producer = $this->createPsrProducerMock();
         $producer
             ->expects($this->once())
             ->method('send')
             ->with($this->identicalTo($topic), $this->identicalTo($transportMessage))
         ;
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         $context
             ->expects($this->once())
-            ->method('createTopic')
+            ->method('createQueue')
+            ->with('aprefix.default')
             ->willReturn($topic)
         ;
         $context
@@ -204,9 +203,9 @@ class AmqpDriverTest extends TestCase
             ->willReturn($transportMessage)
         ;
 
-        $driver = new AmqpDriver(
+        $driver = new RedisDriver(
             $context,
-            $this->createDummyConfig(),
+            $config,
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -218,9 +217,9 @@ class AmqpDriverTest extends TestCase
 
     public function testShouldThrowExceptionIfTopicParameterIsNotSet()
     {
-        $driver = new AmqpDriver(
-            $this->createAmqpContextMock(),
-            $this->createDummyConfig(),
+        $driver = new RedisDriver(
+            $this->createPsrContextMock(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -232,16 +231,16 @@ class AmqpDriverTest extends TestCase
 
     public function testShouldSendMessageToProcessor()
     {
-        $queue = new AmqpQueue('');
-        $transportMessage = new AmqpMessage();
+        $queue = new RedisDestination('aDestinationName');
+        $transportMessage = new RedisMessage();
 
-        $producer = $this->createAmqpProducerMock();
+        $producer = $this->createPsrProducerMock();
         $producer
             ->expects($this->once())
             ->method('send')
             ->with($this->identicalTo($queue), $this->identicalTo($transportMessage))
         ;
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         $context
             ->expects($this->once())
             ->method('createQueue')
@@ -258,9 +257,9 @@ class AmqpDriverTest extends TestCase
             ->willReturn($transportMessage)
         ;
 
-        $driver = new AmqpDriver(
+        $driver = new RedisDriver(
             $context,
-            $this->createDummyConfig(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -273,9 +272,9 @@ class AmqpDriverTest extends TestCase
 
     public function testShouldThrowExceptionIfProcessorNameParameterIsNotSet()
     {
-        $driver = new AmqpDriver(
-            $this->createAmqpContextMock(),
-            $this->createDummyConfig(),
+        $driver = new RedisDriver(
+            $this->createPsrContextMock(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -287,9 +286,9 @@ class AmqpDriverTest extends TestCase
 
     public function testShouldThrowExceptionIfProcessorQueueNameParameterIsNotSet()
     {
-        $driver = new AmqpDriver(
-            $this->createAmqpContextMock(),
-            $this->createDummyConfig(),
+        $driver = new RedisDriver(
+            $this->createPsrContextMock(),
+            Config::create(),
             $this->createDummyQueueMetaRegistry()
         );
 
@@ -302,59 +301,26 @@ class AmqpDriverTest extends TestCase
         $driver->sendToProcessor($message);
     }
 
-    public function testShouldSetupBroker()
+    public function testShouldDoNothingOnSetupBroker()
     {
-        $routerTopic = new AmqpTopic('');
-        $routerQueue = new AmqpQueue('');
-
-        $processorQueue = new AmqpQueue('');
-
-        $context = $this->createAmqpContextMock();
+        $context = $this->createPsrContextMock();
         // setup router
         $context
-            ->expects($this->at(0))
+            ->expects($this->never())
             ->method('createTopic')
-            ->willReturn($routerTopic)
         ;
         $context
-            ->expects($this->at(1))
+            ->expects($this->never())
             ->method('createQueue')
-            ->willReturn($routerQueue)
-        ;
-        $context
-            ->expects($this->at(2))
-            ->method('declareTopic')
-            ->with($this->identicalTo($routerTopic))
-        ;
-        $context
-            ->expects($this->at(3))
-            ->method('declareQueue')
-            ->with($this->identicalTo($routerQueue))
-        ;
-        $context
-            ->expects($this->at(4))
-            ->method('bind')
-            ->with($this->isInstanceOf(AmqpBind::class))
-        ;
-        // setup processor queue
-        $context
-            ->expects($this->at(5))
-            ->method('createQueue')
-            ->willReturn($processorQueue)
-        ;
-        $context
-            ->expects($this->at(6))
-            ->method('declareQueue')
-            ->with($this->identicalTo($processorQueue))
         ;
 
-        $meta = new QueueMetaRegistry($this->createDummyConfig(), [
+        $meta = new QueueMetaRegistry(Config::create(), [
             'default' => [],
         ]);
 
-        $driver = new AmqpDriver(
+        $driver = new RedisDriver(
             $context,
-            $this->createDummyConfig(),
+            Config::create(),
             $meta
         );
 
@@ -362,19 +328,19 @@ class AmqpDriverTest extends TestCase
     }
 
     /**
-     * @return \PHPUnit_Framework_MockObject_MockObject|AmqpContext
+     * @return \PHPUnit_Framework_MockObject_MockObject|RedisContext
      */
-    private function createAmqpContextMock()
+    private function createPsrContextMock()
     {
-        return $this->createMock(AmqpContext::class);
+        return $this->createMock(RedisContext::class);
     }
 
     /**
-     * @return \PHPUnit_Framework_MockObject_MockObject|AmqpProducer
+     * @return \PHPUnit_Framework_MockObject_MockObject|PsrProducer
      */
-    private function createAmqpProducerMock()
+    private function createPsrProducerMock()
     {
-        return $this->createMock(AmqpProducer::class);
+        return $this->createMock(PsrProducer::class);
     }
 
     /**

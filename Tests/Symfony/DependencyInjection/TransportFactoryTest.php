@@ -1,68 +1,43 @@
 <?php
 
-namespace Enqueue\Tests\Symfony;
+namespace Enqueue\Tests\Symfony\DependencyInjection;
 
-use Enqueue\Symfony\DefaultTransportFactory;
-use Enqueue\Symfony\TransportFactoryInterface;
+use Enqueue\Symfony\DependencyInjection\TransportFactory;
 use Enqueue\Test\ClassExtensionTrait;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
 
-class DefaultTransportFactoryTest extends TestCase
+class TransportFactoryTest extends TestCase
 {
     use ClassExtensionTrait;
 
-    public function testShouldImplementTransportFactoryInterface()
+    public function testShouldBeFinal()
     {
-        $this->assertClassImplements(TransportFactoryInterface::class, DefaultTransportFactory::class);
+        $this->assertClassFinal(TransportFactory::class);
     }
 
-    public function testCouldBeConstructedWithDefaultName()
+    public function testShouldAllowGetNameSetInConstructor()
     {
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('aName');
 
-        $this->assertEquals('default', $transport->getName());
+        $this->assertEquals('aName', $transport->getName());
     }
 
-    public function testCouldBeConstructedWithCustomName()
+    public function testThrowIfEmptyNameGivenOnConstruction()
     {
-        $transport = new DefaultTransportFactory('theCustomName');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The name could not be empty.');
 
-        $this->assertEquals('theCustomName', $transport->getName());
+        new TransportFactory('');
     }
 
-    public function testShouldAllowAddConfigurationAsAliasAsString()
+    public function testShouldAllowAddConfigurationAsStringDsn()
     {
-        $transport = new DefaultTransportFactory();
-        $tb = new TreeBuilder();
-        $rootNode = $tb->root('foo');
-
-        $transport->addConfiguration($rootNode);
-        $processor = new Processor();
-        $config = $processor->process($tb->buildTree(), ['the_alias']);
-
-        $this->assertEquals(['alias' => 'the_alias'], $config);
-    }
-
-    public function testShouldAllowAddConfigurationAsAliasAsOption()
-    {
-        $transport = new DefaultTransportFactory();
-        $tb = new TreeBuilder();
-        $rootNode = $tb->root('foo');
-
-        $transport->addConfiguration($rootNode);
-        $processor = new Processor();
-        $config = $processor->process($tb->buildTree(), [['alias' => 'the_alias']]);
-
-        $this->assertEquals(['alias' => 'the_alias'], $config);
-    }
-
-    public function testShouldAllowAddConfigurationAsDsn()
-    {
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
         $tb = new TreeBuilder();
         $rootNode = $tb->root('foo');
 
@@ -80,7 +55,7 @@ class DefaultTransportFactoryTest extends TestCase
      */
     public function testShouldAllowAddConfigurationAsDsnWithoutSlashes()
     {
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
         $tb = new TreeBuilder();
         $rootNode = $tb->root('foo');
 
@@ -91,9 +66,9 @@ class DefaultTransportFactoryTest extends TestCase
         $this->assertEquals(['dsn' => 'dsn:'], $config);
     }
 
-    public function testShouldSetNullTransportByDefault()
+    public function testShouldSetNullTransportIfNullGiven()
     {
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
         $tb = new TreeBuilder();
         $rootNode = $tb->root('foo');
 
@@ -102,91 +77,69 @@ class DefaultTransportFactoryTest extends TestCase
 
         $config = $processor->process($tb->buildTree(), [null]);
         $this->assertEquals(['dsn' => 'null:'], $config);
-
-        $config = $processor->process($tb->buildTree(), ['']);
-        $this->assertEquals(['dsn' => 'null:'], $config);
     }
 
-    public function testThrowIfNeitherDsnNorAliasConfigured()
+    public function testShouldSetNullTransportIfEmptyStringGiven()
     {
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
         $tb = new TreeBuilder();
         $rootNode = $tb->root('foo');
 
         $transport->addConfiguration($rootNode);
         $processor = new Processor();
 
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Either dsn or alias option must be set');
-        $processor->process($tb->buildTree(), [[]]);
+        $config = $processor->process($tb->buildTree(), ['']);
+        $this->assertEquals(['dsn' => 'null:'], $config);
     }
 
-    public function testShouldCreateConnectionFactoryFromAlias()
+    public function testShouldSetNullTransportIfEmptyArrayGiven()
     {
-        $container = new ContainerBuilder();
+        $transport = new TransportFactory('default');
+        $tb = new TreeBuilder();
+        $rootNode = $tb->root('foo');
 
-        $transport = new DefaultTransportFactory();
+        $transport->addConfiguration($rootNode);
+        $processor = new Processor();
 
-        $serviceId = $transport->createConnectionFactory($container, ['alias' => 'foo']);
+        $config = $processor->process($tb->buildTree(), [[]]);
+        $this->assertEquals(['dsn' => 'null:'], $config);
+    }
 
-        $this->assertEquals('enqueue.transport.default.connection_factory', $serviceId);
+    public function testThrowIfEmptyDsnGiven()
+    {
+        $transport = new TransportFactory('default');
+        $tb = new TreeBuilder();
+        $rootNode = $tb->root('foo');
 
-        $this->assertTrue($container->hasAlias('enqueue.transport.default.connection_factory'));
+        $transport->addConfiguration($rootNode);
+        $processor = new Processor();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The path "foo.dsn" cannot contain an empty value, but got "".');
+        $processor->process($tb->buildTree(), [['dsn' => '']]);
+    }
+
+    public function testThrowIfExtraOptionGiven()
+    {
+        $transport = new TransportFactory('default');
+        $tb = new TreeBuilder();
+        $rootNode = $tb->root('foo');
+
+        $transport->addConfiguration($rootNode);
+        $processor = new Processor();
+
+        $config = $processor->process($tb->buildTree(), [['dsn' => 'foo:', 'extraOption' => 'aVal']]);
         $this->assertEquals(
-            'enqueue.transport.foo.connection_factory',
-            (string) $container->getAlias('enqueue.transport.default.connection_factory')
+            ['dsn' => 'foo:', 'extraOption' => 'aVal'],
+            $config
         );
-
-        $this->assertTrue($container->hasAlias('enqueue.transport.connection_factory'));
-        $this->assertEquals(
-            'enqueue.transport.default.connection_factory',
-            (string) $container->getAlias('enqueue.transport.connection_factory')
-        );
-    }
-
-    public function testShouldCreateContextFromAlias()
-    {
-        $container = new ContainerBuilder();
-
-        $transport = new DefaultTransportFactory();
-
-        $serviceId = $transport->createContext($container, ['alias' => 'the_alias']);
-
-        $this->assertEquals('enqueue.transport.default.context', $serviceId);
-
-        $this->assertTrue($container->hasAlias($serviceId));
-        $context = $container->getAlias($serviceId);
-        $this->assertEquals('enqueue.transport.the_alias.context', (string) $context);
-
-        $this->assertTrue($container->hasAlias('enqueue.transport.context'));
-        $context = $container->getAlias('enqueue.transport.context');
-        $this->assertEquals($serviceId, (string) $context);
-    }
-
-    public function testShouldCreateDriverFromAlias()
-    {
-        $container = new ContainerBuilder();
-
-        $transport = new DefaultTransportFactory();
-
-        $driverId = $transport->createDriver($container, ['alias' => 'the_alias']);
-
-        $this->assertEquals('enqueue.client.default.driver', $driverId);
-
-        $this->assertTrue($container->hasAlias($driverId));
-        $context = $container->getAlias($driverId);
-        $this->assertEquals('enqueue.client.the_alias.driver', (string) $context);
-
-        $this->assertTrue($container->hasAlias('enqueue.client.driver'));
-        $context = $container->getAlias('enqueue.client.driver');
-        $this->assertEquals($driverId, (string) $context);
     }
 
     public function testShouldCreateConnectionFactoryFromDSN()
     {
         $container = new ContainerBuilder();
 
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
 
         $serviceId = $transport->createConnectionFactory($container, ['dsn' => 'foo://bar/baz']);
 
@@ -200,7 +153,7 @@ class DefaultTransportFactoryTest extends TestCase
             $container->getDefinition('enqueue.transport.default.connection_factory')->getFactory())
         ;
         $this->assertSame(
-            ['foo://bar/baz'],
+            [['dsn' => 'foo://bar/baz']],
             $container->getDefinition('enqueue.transport.default.connection_factory')->getArguments())
         ;
 
@@ -215,7 +168,7 @@ class DefaultTransportFactoryTest extends TestCase
     {
         $container = new ContainerBuilder();
 
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
 
         $serviceId = $transport->createContext($container, ['dsn' => 'foo://bar/baz']);
 
@@ -242,7 +195,7 @@ class DefaultTransportFactoryTest extends TestCase
     {
         $container = new ContainerBuilder();
 
-        $transport = new DefaultTransportFactory();
+        $transport = new TransportFactory('default');
 
         $serviceId = $transport->createDriver($container, ['dsn' => 'foo://bar/baz', 'foo' => 'fooVal']);
 

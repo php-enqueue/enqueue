@@ -1,6 +1,6 @@
 <?php
 
-namespace  Enqueue\Client\Amqp;
+namespace  Enqueue\Client\Driver;
 
 use Enqueue\Client\Config;
 use Enqueue\Client\Message;

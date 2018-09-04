@@ -1,18 +1,35 @@
 <?php
 
-namespace Enqueue\Symfony;
+namespace Enqueue\Symfony\DependencyInjection;
 
 use Enqueue\Client\DriverInterface;
 use Interop\Queue\PsrConnectionFactory;
 use Interop\Queue\PsrContext;
-use Symfony\Component\Config\Definition\Builder\VariableNodeDefinition;
+use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\DependencyInjection\Alias;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
 
-class DefaultTransportFactory
+/**
+ * @internal
+ */
+final class TransportFactory
 {
-    public function addConfiguration(VariableNodeDefinition $builder): void
+    /**
+     * @var string
+     */
+    private $name;
+
+    public function __construct(string $name)
+    {
+        if (empty($name)) {
+            throw new \InvalidArgumentException('The name could not be empty.');
+        }
+
+        $this->name = $name;
+    }
+
+    public function addConfiguration(ArrayNodeDefinition $builder): void
     {
         $builder
             ->beforeNormalization()
@@ -31,12 +48,10 @@ class DefaultTransportFactory
 
                     throw new \LogicException(sprintf('The value must be array, null or string. Got "%s"', gettype($v)));
                 })
-            ->end()
-            ->pro
-            ->children()
-                ->scalarNode('dsn')->cannotBeEmpty()->end()
-                ->variableNode('config')->end()
-            ->end()
+        ->end()
+        ->ignoreExtraKeys(false)
+        ->children()
+            ->scalarNode('dsn')->cannotBeEmpty()->isRequired()->end()
         ->end()
         ;
     }
@@ -47,7 +62,7 @@ class DefaultTransportFactory
 
         $container->register($factoryId, PsrConnectionFactory::class)
             ->setFactory([new Reference('enqueue.connection_factory_factory'), 'create'])
-            ->addArgument($config['dsn'])
+            ->addArgument($config)
         ;
 
         $container->setAlias('enqueue.transport.connection_factory', new Alias($factoryId, true));
@@ -88,6 +103,6 @@ class DefaultTransportFactory
 
     public function getName(): string
     {
-        return 'default';
+        return $this->name;
     }
 }

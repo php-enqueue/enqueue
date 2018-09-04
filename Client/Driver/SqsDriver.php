@@ -1,24 +1,23 @@
 <?php
 
-namespace  Enqueue\Client\Amqp;
+namespace Enqueue\Client\Driver;
 
 use Enqueue\Client\Config;
 use Enqueue\Client\DriverInterface;
 use Enqueue\Client\Message;
+use Enqueue\Client\MessagePriority;
 use Enqueue\Client\Meta\QueueMetaRegistry;
-use Interop\Amqp\AmqpContext;
-use Interop\Amqp\AmqpMessage;
-use Interop\Amqp\AmqpQueue;
-use Interop\Amqp\AmqpTopic;
-use Interop\Amqp\Impl\AmqpBind;
+use Enqueue\Sqs\SqsContext;
+use Enqueue\Sqs\SqsDestination;
+use Enqueue\Sqs\SqsMessage;
 use Interop\Queue\PsrMessage;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
-class AmqpDriver implements DriverInterface
+class SqsDriver implements DriverInterface
 {
     /**
-     * @var AmqpContext
+     * @var SqsContext
      */
     private $context;
 
@@ -33,11 +32,11 @@ class AmqpDriver implements DriverInterface
     private $queueMetaRegistry;
 
     /**
-     * @param AmqpContext       $context
+     * @param SqsContext        $context
      * @param Config            $config
      * @param QueueMetaRegistry $queueMetaRegistry
      */
-    public function __construct(AmqpContext $context, Config $config, QueueMetaRegistry $queueMetaRegistry)
+    public function __construct(SqsContext $context, Config $config, QueueMetaRegistry $queueMetaRegistry)
     {
         $this->context = $context;
         $this->config = $config;
@@ -53,10 +52,10 @@ class AmqpDriver implements DriverInterface
             throw new \LogicException('Topic name parameter is required but is not set');
         }
 
-        $topic = $this->createRouterTopic();
+        $queue = $this->createQueue($this->config->getRouterQueueName());
         $transportMessage = $this->createTransportMessage($message);
 
-        $this->context->createProducer()->send($topic, $transportMessage);
+        $this->context->createProducer()->send($queue, $transportMessage);
     }
 
     /**
@@ -80,24 +79,31 @@ class AmqpDriver implements DriverInterface
 
     /**
      * {@inheritdoc}
+     *
+     * @return SqsDestination
+     */
+    public function createQueue($queueName)
+    {
+        $transportName = $this->queueMetaRegistry->getQueueMeta($queueName)->getTransportName();
+        $transportName = str_replace('.', '_dot_', $transportName);
+
+        return $this->context->createQueue($transportName);
+    }
+
+    /**
+     * {@inheritdoc}
      */
     public function setupBroker(LoggerInterface $logger = null)
     {
         $logger = $logger ?: new NullLogger();
         $log = function ($text, ...$args) use ($logger) {
-            $logger->debug(sprintf('[AmqpDriver] '.$text, ...$args));
+            $logger->debug(sprintf('[SqsDriver] '.$text, ...$args));
         };
 
         // setup router
-        $routerTopic = $this->createRouterTopic();
         $routerQueue = $this->createQueue($this->config->getRouterQueueName());
-
-        $log('Declare router exchange: %s', $routerTopic->getTopicName());
-        $this->context->declareTopic($routerTopic);
         $log('Declare router queue: %s', $routerQueue->getQueueName());
         $this->context->declareQueue($routerQueue);
-        $log('Bind router queue to exchange: %s -> %s', $routerQueue->getQueueName(), $routerTopic->getTopicName());
-        $this->context->bind(new AmqpBind($routerTopic, $routerQueue, $routerQueue->getQueueName()));
 
         // setup queues
         foreach ($this->queueMetaRegistry->getQueuesMeta() as $meta) {
@@ -111,27 +117,14 @@ class AmqpDriver implements DriverInterface
     /**
      * {@inheritdoc}
      *
-     * @return AmqpQueue
-     */
-    public function createQueue($queueName)
-    {
-        $transportName = $this->queueMetaRegistry->getQueueMeta($queueName)->getTransportName();
-
-        $queue = $this->context->createQueue($transportName);
-        $queue->addFlag(AmqpQueue::FLAG_DURABLE);
-
-        return $queue;
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @return AmqpMessage
+     * @return SqsMessage
      */
     public function createTransportMessage(Message $message)
     {
-        $headers = $message->getHeaders();
         $properties = $message->getProperties();
+
+        $headers = $message->getHeaders();
+        $headers['content_type'] = $message->getContentType();
 
         $transportMessage = $this->context->createMessage();
         $transportMessage->setBody($message->getBody());
@@ -141,18 +134,12 @@ class AmqpDriver implements DriverInterface
         $transportMessage->setTimestamp($message->getTimestamp());
         $transportMessage->setReplyTo($message->getReplyTo());
         $transportMessage->setCorrelationId($message->getCorrelationId());
-        $transportMessage->setContentType($message->getContentType());
-        $transportMessage->setDeliveryMode(AmqpMessage::DELIVERY_MODE_PERSISTENT);
-
-        if ($message->getExpire()) {
-            $transportMessage->setExpiration($message->getExpire() * 1000);
-        }
 
         return $transportMessage;
     }
 
     /**
-     * @param AmqpMessage $message
+     * @param SqsMessage $message
      *
      * {@inheritdoc}
      */
@@ -163,14 +150,11 @@ class AmqpDriver implements DriverInterface
         $clientMessage->setBody($message->getBody());
         $clientMessage->setHeaders($message->getHeaders());
         $clientMessage->setProperties($message->getProperties());
-        $clientMessage->setContentType($message->getContentType());
 
-        if ($expiration = $message->getExpiration()) {
-            $clientMessage->setExpire((int) ($expiration / 1000));
-        }
-
+        $clientMessage->setContentType($message->getHeader('content_type'));
         $clientMessage->setMessageId($message->getMessageId());
         $clientMessage->setTimestamp($message->getTimestamp());
+        $clientMessage->setPriority(MessagePriority::NORMAL);
         $clientMessage->setReplyTo($message->getReplyTo());
         $clientMessage->setCorrelationId($message->getCorrelationId());
 
@@ -183,19 +167,5 @@ class AmqpDriver implements DriverInterface
     public function getConfig()
     {
         return $this->config;
-    }
-
-    /**
-     * @return AmqpTopic
-     */
-    private function createRouterTopic()
-    {
-        $topic = $this->context->createTopic(
-            $this->config->createTransportRouterTopicName($this->config->getRouterTopicName())
-        );
-        $topic->setType(AmqpTopic::TYPE_FANOUT);
-        $topic->addFlag(AmqpTopic::FLAG_DURABLE);
-
-        return $topic;
     }
 }
