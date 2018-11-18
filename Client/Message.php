@@ -15,7 +15,7 @@ class Message
     const SCOPE_APP = 'enqueue.scope.app';
 
     /**
-     * @var string|null
+     * @var null|string|int|float|array|\JsonSerializable
      */
     private $body;
 
@@ -88,7 +88,7 @@ class Message
     }
 
     /**
-     * @return null|string
+     * @return null|string|int|float|array|\JsonSerializable
      */
     public function getBody()
     {
