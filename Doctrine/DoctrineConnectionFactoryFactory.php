@@ -6,7 +6,7 @@ use Enqueue\ConnectionFactoryFactoryInterface;
 use Enqueue\Dbal\ManagerRegistryConnectionFactory;
 use Enqueue\Dsn\Dsn;
 use Interop\Queue\ConnectionFactory;
-use Symfony\Bridge\Doctrine\RegistryInterface;
+use Doctrine\Bundle\DoctrineBundle\Registry;
 
 class DoctrineConnectionFactoryFactory implements ConnectionFactoryFactoryInterface
 {
@@ -20,7 +20,7 @@ class DoctrineConnectionFactoryFactory implements ConnectionFactoryFactoryInterf
      */
     private $fallbackFactory;
 
-    public function __construct(RegistryInterface $doctrine, ConnectionFactoryFactoryInterface $fallbackFactory)
+    public function __construct(Registry $doctrine, ConnectionFactoryFactoryInterface $fallbackFactory)
     {
         $this->doctrine = $doctrine;
         $this->fallbackFactory = $fallbackFactory;
