@@ -120,9 +120,9 @@ class AmqpDriver extends GenericDriver
     }
 
     /**
-     * @param AmqpProducer $producer
-     * @param AmqpTopic    $topic
-     * @param AmqpMessage  $transportMessage
+     * @param InteropProducer $producer
+     * @param Destination    $topic
+     * @param InteropMessage  $transportMessage
      */
     protected function doSendToRouter(InteropProducer $producer, Destination $topic, InteropMessage $transportMessage): void
     {
