@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace  Enqueue\Client\Driver;
 
-use Enqueue\AmqpExt\AmqpProducer;
 use Enqueue\Client\Message;
 use Interop\Amqp\AmqpContext;
 use Interop\Amqp\AmqpMessage;
+use Interop\Amqp\AmqpProducer;
 use Interop\Amqp\AmqpQueue;
 use Interop\Amqp\AmqpTopic;
 use Interop\Amqp\Impl\AmqpBind;
