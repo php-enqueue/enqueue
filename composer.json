@@ -18,7 +18,7 @@
     "require-dev": {
         "dms/phpunit-arraysubset-asserts": "dev-master",
         "phpunit/phpunit": "^9.5",
-        "symfony/console": "^5.41|^6.0",
+        "symfony/console": "^5.4 || ^6.0",
         "symfony/dependency-injection": "^5.4|^6.0",
         "symfony/config": "^5.4|^6.0",
         "symfony/event-dispatcher": "^5.4|^6.0",
@@ -70,6 +70,9 @@
     "config": {
         "platform": {
             "ext-amqp": "1.9.3"
+        },
+        "allow-plugins": {
+            "php-http/discovery": false
         }
     },
     "minimum-stability": "dev",
