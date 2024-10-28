@@ -16,6 +16,7 @@
         "psr/container": "^1.1 || ^2.0"
     },
     "require-dev": {
+        "dms/phpunit-arraysubset-asserts": "dev-master",
         "phpunit/phpunit": "^9.5",
         "symfony/console": "^5.41|^6.0",
         "symfony/dependency-injection": "^5.4|^6.0",
