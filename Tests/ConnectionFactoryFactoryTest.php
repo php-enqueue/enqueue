@@ -165,7 +165,11 @@ class ConnectionFactoryFactoryTest extends TestCase
 
         yield ['beanstalk:', PheanstalkConnectionFactory::class];
 
-        yield ['kafka:', RdKafkaConnectionFactory::class];
+        if (defined('RD_KAFKA_VERSION')) {
+            yield ['kafka:', RdKafkaConnectionFactory::class];
+
+            yield ['kafka:', RdKafkaConnectionFactory::class];
+        }
 
         yield ['redis:', RedisConnectionFactory::class];
 
