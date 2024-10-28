@@ -25,6 +25,6 @@ jobs:
 
       - run: php Tests/fix_composer_json.php
 
-      - uses: "ramsey/composer-install@v1"
+      - uses: "ramsey/composer-install@v3"
 
       - run: vendor/bin/phpunit --exclude-group=functional
