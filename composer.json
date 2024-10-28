@@ -40,7 +40,8 @@
         "enqueue/simple-client": "0.10.x-dev",
         "enqueue/mongodb": "0.10.x-dev",
         "empi89/php-amqp-stubs": "*@dev",
-        "enqueue/dsn": "0.10.x-dev"
+        "enqueue/dsn": "0.10.x-dev",
+        "phpspec/prophecy-phpunit": "^2.0@dev"
     },
     "suggest": {
         "symfony/console": "^5.4|^6.0 If you want to use cli commands",
