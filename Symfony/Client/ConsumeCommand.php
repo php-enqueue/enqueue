@@ -58,7 +58,7 @@ class ConsumeCommand extends Command
         string $defaultClient,
         string $queueConsumerIdPattern = 'enqueue.client.%s.queue_consumer',
         string $driverIdPattern = 'enqueue.client.%s.driver',
-        string $processorIdPatter = 'enqueue.client.%s.delegate_processor',
+        string $processorIdPatter = 'enqueue.client.%s.delegate_processor'
     ) {
         $this->container = $container;
         $this->defaultClient = $defaultClient;
