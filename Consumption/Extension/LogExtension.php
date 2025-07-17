@@ -30,7 +30,7 @@ class LogExtension implements StartExtensionInterface, MessageReceivedExtensionI
     {
         $message = $context->getMessage();
 
-        $context->getLogger()->debug("Received from {queueName}", [
+        $context->getLogger()->debug('Received from {queueName}', [
             'queueName' => $context->getConsumer()->getQueue()->getQueueName(),
             'redelivered' => $message->isRedelivered(),
             'body' => Stringify::that($message->getBody()),
@@ -45,7 +45,7 @@ class LogExtension implements StartExtensionInterface, MessageReceivedExtensionI
         $queue = $context->getConsumer()->getQueue();
         $result = $context->getResult();
 
-        $logMessage = "Processed from {queueName}";
+        $logMessage = 'Processed from {queueName}';
 
         $reason = '';
         if ($result instanceof Result && $result->getReason()) {

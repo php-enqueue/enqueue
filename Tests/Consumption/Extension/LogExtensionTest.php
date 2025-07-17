@@ -85,7 +85,7 @@ class LogExtensionTest extends TestCase
         $logger
             ->expects($this->once())
             ->method('debug')
-            ->with('Received from {queueName}	{body}', [
+            ->with('Received from {queueName}', [
                 'queueName' => 'aQueue',
                 'redelivered' => false,
                 'body' => Stringify::that('aBody'),
@@ -112,7 +112,7 @@ class LogExtensionTest extends TestCase
             ->expects($this->once())
             ->method('log')
             ->with(LogLevel::INFO,
-                'Processed from {queueName}	{body}	{result}',
+                'Processed from {queueName}',
                 [
                     'queueName' => 'aQueue',
                     'body' => Stringify::that('aBody'),
@@ -142,7 +142,7 @@ class LogExtensionTest extends TestCase
             ->expects($this->once())
             ->method('log')
             ->with(LogLevel::ERROR,
-                'Processed from {queueName}	{body}	{result}',
+                'Processed from {queueName}',
                 [
                     'queueName' => 'aQueue',
                     'body' => Stringify::that('aBody'),
@@ -172,7 +172,7 @@ class LogExtensionTest extends TestCase
             ->expects($this->once())
             ->method('log')
             ->with(LogLevel::INFO,
-                'Processed from {queueName}	{body}	{result}',
+                'Processed from {queueName}',
                 [
                     'queueName' => 'aQueue',
                     'body' => Stringify::that('aBody'),
@@ -202,7 +202,7 @@ class LogExtensionTest extends TestCase
             ->expects($this->once())
             ->method('log')
             ->with(LogLevel::INFO,
-                'Processed from {queueName}	{body}	{result} {reason}',
+                'Processed from {queueName}',
                 [
                     'queueName' => 'aQueue',
                     'body' => Stringify::that('aBody'),
